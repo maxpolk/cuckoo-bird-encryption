@@ -11,15 +11,17 @@ New form of encryption using content on a selected web site to carry your messag
 * __ReadThenBurn__: a [web service](https://readthenburn.com/) used to initially introduce a sender and receiver.  Only when the receiver actually obtains the message will they know it was not intercepted.
 * __Random content site__: a web site where you can grab an URL to random data that lives for a short duration (such as one minute), and the URL is forever invalid afterward
 
-# Bootstrap
+# Sending messages
 The application will generate an initial secret key K that the recipient will import into their application once, to be used on all future communications between both sender and recipient.  It will avoid detection by being passed to ReadThenBurn for a one-time-URL sent to the recipient to obtain the secret key K.  If intercepted this process continues until it is not intercepted.
 
 When the message is ready to be sent, the sender selects an URL from anywhere on the Internet, possibly a random content site.  It must be stable enough to not change before the reciepient receives the message.
 
-The content of the selected URL will be loaded.  Using a simple algorithm, each character of the original message will be found inside the content of the selected URL, and this pointer is appended to the pointer message.
+The content of the selected URL will be loaded.  Using a simple algorithm, each character of the original message will be found inside the content of the selected URL, and this pointer is appended to the pointer message.  The sender has the option to discard the message so that a compromised device cannot reconstitute the message.
 
 The application will use the [TOTP algorithm](https://en.wikipedia.org/wiki/Time-based_One-time_Password_Algorithm) to generate a one-time password used to encrypt the selected URL.
 
-The selected URL and pointer message is sent to the recipient.
+The selected URL and pointer message is sent to the recipient via the application.
 
-The recipient loads the selected URL content, and reverses the process by turning each fragment of the pointer message into a character of the original message.  The selected URL is permanently discarded.  The original message is then displayed to the recipient.  The message is not stored inside the application so that the message is lost forever in a short amount of time.
+The recipient application loads the selected URL content, and deciphers the pointer message by turning each fragment of the pointer message into a character of the original message.  The selected URL is permanently discarded.  The original message is then displayed to the recipient.  The recipient has the option to not store the original message inside the application so that the message is lost forever in a short amount of time, and a compromised device cannot reconstitute the message.
+
+If both sender and recipient elect to discard the original message, then it is impossible for a compromised device on either side to reveal the message.
