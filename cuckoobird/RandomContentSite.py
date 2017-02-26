@@ -183,60 +183,67 @@ If GET of the resource results in 404 Not Found, someone got it before you.
         data = self.request.body
 
         # Validate request body size
-        if len (data) > 100:
-            self.set_status (400)
-            self.write ("{'error': 'Request body too large'}")
-        else:
+        try:
+            if len (data) > 100:
+                raise Exception (400, "{'error': 'Request body too large'}")
+
             content_type_list = self.request.headers.get_list ("Content-Type")
             if content_type_list is None or len (content_type_list) == 0:
-                self.set_status (400)
-                self.write ("{'error': 'Missing Content-Type'}")
-            else:
-                # Get last Content-Type header, parse last instance of header to get charset
-                content_type = self.request.headers.get_list ("Content-Type")[-1]
-                data_type, data_params = cgi.parse_header (content_type)
-                charset = "UTF-8"       # default charset if user doesn't specify
-                if data_params is not None and 'charset' in data_params:
-                    charset = data_params['charset']
+                raise Exception (400, "{'error': 'Missing Content-Type'}")
 
-                # Turn JSON body into a string using encoding of the charset user handed us
-                data_string = data.decode (charset);
+            # Get last Content-Type header, parse last instance of header to get charset
+            content_type = self.request.headers.get_list ("Content-Type")[-1]
+            data_type, data_params = cgi.parse_header (content_type)
+            charset = "UTF-8"       # default charset if user doesn't specify
+            if data_params is not None and 'charset' in data_params:
+                charset = data_params['charset']
+
+            # Turn JSON body into a string using encoding of the charset user handed us
+            data_string = data.decode (charset)
+            try:
                 user_json = json.loads (data_string)
-                if type(user_json) != dict:
-                    self.set_status (400)
-                    self.write ("{'error': 'Request body must be a JSON object'}")
-                elif not 'length' in user_json:
-                    self.set_status (400)
-                    self.write ("{'error': 'Request body must be a JSON object containing a length parameter'}")
-                else:
-                    user_length = user_json['length']
-                    if user_length < 1 or user_length > 1024:
-                        self.set_status (400)
-                        self.write ("{'error': 'You may request 1 to 1024 octets of random data'}");
-                    else:
-                        self.set_status (200)
-                        self.set_header ("Content-type", "text/plain; charset=UTF-8")
-                        self.set_header ("X-Fun-person", "Joe Smith")
-                        self.write ("Hello, world\n")
-                        self.write ("length requested: {}\n".format (user_length))
-                        self.write ("site prefix: {}\n".format (self.site_prefix))
-                        self.write ("method: {}\n".format (self.request.method))
-                        self.write ("uri: {}\n".format (self.request.uri))
-                        self.write ("path: {}\n".format (self.request.path))
-                        self.write ("request body: {}\n".format (data))
-                        self.write ("headers:\n")
-                        for (key, value) in sorted (self.request.headers.get_all ()):
-                            self.write ("    {}={}\n".format (key, value))
-                        # Create length octets as a bytearray
-                        generated_data = bytearray ()
-                        for index in range (user_length):
-                            generated_data.append (random.getrandbits (8))
-                        self.write ("output: {}\n".format (binascii.hexlify (generated_data)))
-                        # Create MongoDB object with bytes we just generated
-                        bson_data = bson.binary.Binary (bytes (generated_data))
-                        # Generate 128-bit hex resource name
-                        resource_name = "{:X}".format (random.getrandbits (128))
-                        self.write ("resource: {}\n".format (resource_name))
+            except Exception as ex:
+                raise Exception (400, "{'error': 'Request body must be a JSON object containing length parameter with int value'}")
+            if type(user_json) != dict:
+                raise Exception (400, "{'error': 'Request body must be a JSON object'}")
+            elif not 'length' in user_json:
+                raise Exception (400, "{'error': 'Request body must be a JSON object containing a length parameter'}")
+
+            user_length = user_json['length']
+            if user_length < 1 or user_length > 1024:
+                raise Exception (400, "{'error': 'You may request 1 to 1024 octets of random data'}")
+
+            self.set_status (200)
+            self.set_header ("Content-type", "text/plain; charset=UTF-8")
+            self.set_header ("X-Fun-person", "Joe Smith")
+            self.write ("Hello, world\n")
+            self.write ("length requested: {}\n".format (user_length))
+            self.write ("site prefix: {}\n".format (self.site_prefix))
+            self.write ("method: {}\n".format (self.request.method))
+            self.write ("uri: {}\n".format (self.request.uri))
+            self.write ("path: {}\n".format (self.request.path))
+            self.write ("request body: {}\n".format (data))
+            self.write ("headers:\n")
+            for (key, value) in sorted (self.request.headers.get_all ()):
+                self.write ("    {}={}\n".format (key, value))
+            # Create length octets as a bytearray
+            generated_data = bytearray ()
+            for index in range (user_length):
+                generated_data.append (random.getrandbits (8))
+            self.write ("output: {}\n".format (binascii.hexlify (generated_data)))
+            # Create MongoDB object with bytes we just generated
+            bson_data = bson.binary.Binary (bytes (generated_data))
+            # Generate 128-bit hex resource name
+            resource_name = "{:X}".format (random.getrandbits (128))
+            self.write ("resource: {}\n".format (resource_name))
+        except Exception as ex:
+            if len (ex.args) == 2:
+                status, message = ex.args
+            else:
+                status = 400
+                message = str (ex)
+            self.set_status (status)
+            self.write (message)
 
 class NotFoundHandler (tornado.web.RequestHandler):
     '''Not found for all http verbs.'''
