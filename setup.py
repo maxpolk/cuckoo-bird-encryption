@@ -38,10 +38,9 @@ import cuckoobird
 setup (
     name=cuckoobird.software_name,
     version=cuckoobird.software_version,
-    packages = ['cuckoobird', 'randomcontentsite', 'tests'],
+    packages = ['cuckoobird', 'tests'],
     package_dir = {
         'cuckoobird': 'cuckoobird',
-        'randomcontentsite': 'randomcontentsite',
         'tests': 'tests'
     },
     scripts = [os.path.join ('bin', 'runtests'),

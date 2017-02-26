@@ -19,7 +19,7 @@ from tornado.web import addslash
 #     
 #     [Service]
 #     Type=simple
-#     ExecStart=/usr/bin/python3 -u /home/WHATEVER/TestServer.py
+#     ExecStart=/usr/bin/python3 -u /home/WHATEVER/RandomContentSite.py
 #
 # Start:
 #     systemctl --user start test-server
@@ -35,7 +35,7 @@ from tornado.web import addslash
 # Install (no userspace drives mapped, use something like /cygdrive/c to find script):
 #     cygrunsrv --install testserver
 #               --path /usr/bin/python3
-#               --args "/cygdrive/c/WHATEVER/TestServer.py"
+#               --args "/cygdrive/c/WHATEVER/RandomContentSite.py"
 #               --termsig INT                 # service stop signal (graceful shutdown)
 #               --shutsig TERM                # system shutdown signal (fast shutdown)
 #               --shutdown                    # stop service at system shutdown
@@ -54,11 +54,11 @@ from tornado.web import addslash
 #
 # Path:              C:\Apps\Python3\python.exe
 # Startup directory: C:\WHATEVER
-# Arguments:         TestServer.py
+# Arguments:         RandomContentSite.py
 # 
 #----------------------------------------------------------------------
 # To run directly:
-#     python3 TestServer.py
+#     python3 RandomContentSite.py
 #
 
 import signal
@@ -177,7 +177,7 @@ class PostDataHandler (tornado.web.RequestHandler):
     a.  For example, GET {prefix}/12345 returns random octets
     b.  Subsequent GET {prefix}/12345 returns 404 Not Found
 If GET of the resource results in 404 Not Found, someone got it before you.
-""".format (self.site_prefix));
+""".format (prefix=self.site_prefix));
     def post(self):
         # Get JSON API request
         data = self.request.body
@@ -187,51 +187,56 @@ If GET of the resource results in 404 Not Found, someone got it before you.
             self.set_status (400)
             self.write ("{'error': 'Request body too large'}")
         else:
-            # Get last Content-Type header, parse last instance of header to get charset
-            content_type = self.request.headers.get_list ("Content-Type")[-1]
-            data_type, data_params = cgi.parse_header (content_type)
-            charset = "UTF-8"       # default charset if user doesn't specify
-            if data_params is not None and 'charset' in data_params:
-                charset = data_params['charset']
-
-            # Turn JSON body into a string using encoding of the charset user handed us
-            data_string = data.decode (charset);
-            user_json = json.loads (data_string)
-            if type(user_json) != dict:
+            content_type_list = self.request.headers.get_list ("Content-Type")
+            if content_type_list is None or len (content_type_list) == 0:
                 self.set_status (400)
-                self.write ("{'error': 'Request body must be a JSON object'}")
-            elif not 'length' in user_json:
-                self.set_status (400)
-                self.write ("{'error': 'Request body must be a JSON object containing a length parameter'}")
+                self.write ("{'error': 'Missing Content-Type'}")
             else:
-                user_length = user_json['length']
-                if user_length < 1 or user_length > 1024:
+                # Get last Content-Type header, parse last instance of header to get charset
+                content_type = self.request.headers.get_list ("Content-Type")[-1]
+                data_type, data_params = cgi.parse_header (content_type)
+                charset = "UTF-8"       # default charset if user doesn't specify
+                if data_params is not None and 'charset' in data_params:
+                    charset = data_params['charset']
+
+                # Turn JSON body into a string using encoding of the charset user handed us
+                data_string = data.decode (charset);
+                user_json = json.loads (data_string)
+                if type(user_json) != dict:
                     self.set_status (400)
-                    self.write ("{'error': 'You may request 1 to 1024 octets of random data'}");
+                    self.write ("{'error': 'Request body must be a JSON object'}")
+                elif not 'length' in user_json:
+                    self.set_status (400)
+                    self.write ("{'error': 'Request body must be a JSON object containing a length parameter'}")
                 else:
-                    self.set_status (200)
-                    self.set_header ("Content-type", "text/plain; charset=UTF-8")
-                    self.set_header ("X-Fun-person", "Joe Smith")
-                    self.write ("Hello, world\n")
-                    self.write ("length requested: {}\n".format (user_length))
-                    self.write ("site prefix: {}\n".format (self.site_prefix))
-                    self.write ("method: {}\n".format (self.request.method))
-                    self.write ("uri: {}\n".format (self.request.uri))
-                    self.write ("path: {}\n".format (self.request.path))
-                    self.write ("request body: {}\n".format (data))
-                    self.write ("headers:\n")
-                    for (key, value) in sorted (self.request.headers.get_all ()):
-                        self.write ("    {}={}\n".format (key, value))
-                    # Create length octets as a bytearray
-                    generated_data = bytearray ()
-                    for index in range (user_length):
-                        generated_data.append (random.getrandbits (8))
-                    self.write ("output: {}\n".format (binascii.hexlify (generated_data)))
-                    # Create MongoDB object with bytes we just generated
-                    bson_data = bson.binary.Binary (bytes (generated_data))
-                    # Generate 128-bit hex resource name
-                    resource_name = "{:X}".format (random.getrandbits (128))
-                    self.write ("resource: {}\n".format (resource_name))
+                    user_length = user_json['length']
+                    if user_length < 1 or user_length > 1024:
+                        self.set_status (400)
+                        self.write ("{'error': 'You may request 1 to 1024 octets of random data'}");
+                    else:
+                        self.set_status (200)
+                        self.set_header ("Content-type", "text/plain; charset=UTF-8")
+                        self.set_header ("X-Fun-person", "Joe Smith")
+                        self.write ("Hello, world\n")
+                        self.write ("length requested: {}\n".format (user_length))
+                        self.write ("site prefix: {}\n".format (self.site_prefix))
+                        self.write ("method: {}\n".format (self.request.method))
+                        self.write ("uri: {}\n".format (self.request.uri))
+                        self.write ("path: {}\n".format (self.request.path))
+                        self.write ("request body: {}\n".format (data))
+                        self.write ("headers:\n")
+                        for (key, value) in sorted (self.request.headers.get_all ()):
+                            self.write ("    {}={}\n".format (key, value))
+                        # Create length octets as a bytearray
+                        generated_data = bytearray ()
+                        for index in range (user_length):
+                            generated_data.append (random.getrandbits (8))
+                        self.write ("output: {}\n".format (binascii.hexlify (generated_data)))
+                        # Create MongoDB object with bytes we just generated
+                        bson_data = bson.binary.Binary (bytes (generated_data))
+                        # Generate 128-bit hex resource name
+                        resource_name = "{:X}".format (random.getrandbits (128))
+                        self.write ("resource: {}\n".format (resource_name))
 
 class NotFoundHandler (tornado.web.RequestHandler):
     '''Not found for all http verbs.'''
