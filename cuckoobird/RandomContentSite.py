@@ -3,7 +3,7 @@ import json
 import cgi                      # for parse_header
 import random
 import binascii
-import bson
+import bson.binary
 import tornado.ioloop
 import tornado.web
 import tornado.httputil
@@ -12,21 +12,30 @@ from tornado.web import addslash
 #----------------------------------------------------------------------
 # To install on Ubuntu under systemd, create a service file:
 # File location:
-#     ~/.config/systemd/user/test-server.service
+#     /etc/systemd/system/python3-randomdata.service
 # File contents:
 #     [Unit]
-#     Description=Python test service
+#     Description=Python3 randomdata site
+#     After=network.target
 #     
 #     [Service]
 #     Type=simple
-#     ExecStart=/usr/bin/python3 -u /home/WHATEVER/RandomContentSite.py
-#
+#     WorkingDirectory=/var/www/python/cuckoo-bird-encryption
+#     Environment="PYTHONPATH=/var/www/python/cuckoo-bird-encryption"
+#     ExecStart=/usr/bin/python3 -u cuckoobird/RandomContentSite.py random 8010
+#     StandardOutput=journal
+#     StandardError=journal
+#     
+#     [Install]
+#     WantedBy=multi-user.target
 # Start:
-#     systemctl --user start test-server
-# Start:
-#     systemctl --user stop test-server
-# Log (we ran python3 -u for unbuffered output so it shows immediately in log):
-#     /var/log/syslog
+#     systemctl daemon-reload
+#     systemctl enable python3-randomdata
+# Start and stop:
+#     systemctl start test-server
+#     systemctl stop test-server
+# View log (we ran python3 -u for unbuffered output so it shows immediately in log):
+#     journalctl -u python3-random
 #
 #----------------------------------------------------------------------
 # To install as a Cygwin Windows service, use cygrunsrv as follows.
