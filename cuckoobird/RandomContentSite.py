@@ -1,3 +1,5 @@
+import os
+import getpass
 import re
 import json
 import cgi                      # for parse_header
@@ -7,7 +9,9 @@ import bson.binary
 import tornado.ioloop
 import tornado.web
 import tornado.httputil
+import tornado.options
 from tornado.web import addslash
+import pymongo
 
 #----------------------------------------------------------------------
 # To install on Ubuntu under systemd, create a service file:
@@ -28,7 +32,7 @@ from tornado.web import addslash
 #     
 #     [Install]
 #     WantedBy=multi-user.target
-# Start:
+# Enable:
 #     systemctl daemon-reload
 #     systemctl enable python3-randomdata
 # Start and stop:
@@ -67,8 +71,33 @@ from tornado.web import addslash
 # 
 #----------------------------------------------------------------------
 # To run directly:
-#     python3 RandomContentSite.py
+#     python3 RandomContentSite.py random 8010
 #
+#----------------------------------------------------------------------
+# Configuration file:
+#     Create a simple name=value style configuration file that gets loaded, to provide
+#     the database host, port, database name, username, and password, such as:
+#         db_host = "localhost"
+#         db_port = 27017
+#         db_name = "rand"
+#         db_user = "myuser"
+#         db_password = "SECRET"
+#     Omit db_user to connect unauthenticated (probably a very bad idea).
+#
+#----------------------------------------------------------------------
+# Testing using curl.
+#
+# Post to obtain 10 octets of random data:
+#     $ curl -i -X POST 'http://localhost:8080/random/' -H 'Content-Type: application/json' --data-binary '{"length": 10}'
+#
+# Get of random data created:
+#     $ curl -i 'http://localhost:8080/random/A274CB0A2816135DD4FD92FEFA1009F'
+#
+
+# Globals
+client = None
+database = None
+collection = None
 
 import signal
 def shutdown_callback ():
@@ -132,19 +161,13 @@ class MainDataHandler (tornado.web.RequestHandler):
         pass
     def get(self):
         self.set_status (200)
-        self.set_header ("Content-type", "text/plain; charset=UTF-8")
-        self.set_header ("X-Fun-person", "Joe Smith")
-        self.write ("site prefix: {}\n".format (self.site_prefix))
-        self.write ("method: {}\n".format (self.request.method))
-        self.write ("uri: {}\n".format (self.request.uri))
-        self.write ("path: {}\n".format (self.request.path))
-        self.write ("query: {}\n".format (self.request.query))
-        self.write ("version: {}\n".format (self.request.version))
-        self.write ("remote ip: {}\n".format (self.request.remote_ip))
-        self.write ("protocol: {}\n".format (self.request.protocol))
-        self.write ("headers:\n")
-        for (key, value) in sorted (self.request.headers.get_all ()):
-            self.write ("    {}={}\n".format (key, value))
+        self.set_header ("Content-type", "application/json")
+        # Find the resource (strip leading slash)
+        resource = self.request.uri[1:]
+        document = collection.find_one ({"_id": resource})
+        valueBytes = document["randomdata"]
+        # Write binary as base64
+        self.write ("{{\"data-base64\": \"{}\"}}\n".format (binascii.b2a_base64 (valueBytes).decode ('utf-8').strip ()))
 
 class PostDataHandler (tornado.web.RequestHandler):
     '''
@@ -194,11 +217,11 @@ If GET of the resource results in 404 Not Found, someone got it before you.
         # Validate request body size
         try:
             if len (data) > 100:
-                raise Exception (400, "{'error': 'Request body too large'}")
+                raise Exception (400, '{"error": "Request body too large"}')
 
             content_type_list = self.request.headers.get_list ("Content-Type")
             if content_type_list is None or len (content_type_list) == 0:
-                raise Exception (400, "{'error': 'Missing Content-Type'}")
+                raise Exception (400, '{"error": "Missing Content-Type"}')
 
             # Get last Content-Type header, parse last instance of header to get charset
             content_type = self.request.headers.get_list ("Content-Type")[-1]
@@ -212,39 +235,37 @@ If GET of the resource results in 404 Not Found, someone got it before you.
             try:
                 user_json = json.loads (data_string)
             except Exception as ex:
-                raise Exception (400, "{'error': 'Request body must be a JSON object containing length parameter with int value'}")
+                raise Exception (400, '{"error": "Request body must be a JSON object containing length parameter with int value"}')
             if type(user_json) != dict:
-                raise Exception (400, "{'error': 'Request body must be a JSON object'}")
+                raise Exception (400, '{"error": "Request body must be a JSON object"}')
             elif not 'length' in user_json:
-                raise Exception (400, "{'error': 'Request body must be a JSON object containing a length parameter'}")
+                raise Exception (400, '{"error": "Request body must be a JSON object containing a length parameter"}')
 
             user_length = user_json['length']
+            if not type (user_length) is int:
+                raise Exception (400, '{"error": "Request body must be a JSON object containing length parameter with int value"}')
+            print ("Type of length is {}".format (type (user_length)))
             if user_length < 1 or user_length > 1024:
-                raise Exception (400, "{'error': 'You may request 1 to 1024 octets of random data'}")
+                raise Exception (400, '{"error": "You may request 1 to 1024 octets of random data"}')
 
             self.set_status (200)
-            self.set_header ("Content-type", "text/plain; charset=UTF-8")
-            self.set_header ("X-Fun-person", "Joe Smith")
-            self.write ("Hello, world\n")
-            self.write ("length requested: {}\n".format (user_length))
-            self.write ("site prefix: {}\n".format (self.site_prefix))
-            self.write ("method: {}\n".format (self.request.method))
-            self.write ("uri: {}\n".format (self.request.uri))
-            self.write ("path: {}\n".format (self.request.path))
-            self.write ("request body: {}\n".format (data))
-            self.write ("headers:\n")
-            for (key, value) in sorted (self.request.headers.get_all ()):
-                self.write ("    {}={}\n".format (key, value))
+            self.set_header ("Content-type", "application/json")
             # Create length octets as a bytearray
             generated_data = bytearray ()
             for index in range (user_length):
                 generated_data.append (random.getrandbits (8))
-            self.write ("output: {}\n".format (binascii.hexlify (generated_data)))
             # Create MongoDB object with bytes we just generated
             bson_data = bson.binary.Binary (bytes (generated_data))
             # Generate 128-bit hex resource name
             resource_name = "{:X}".format (random.getrandbits (128))
-            self.write ("resource: {}\n".format (resource_name))
+            # Write output as resource name and base64 of data generated
+            self.write ("{{\"resource\": \"{}\", \"data-base64\": \"{}\"}}\n".format (
+                resource_name, binascii.b2a_base64 (generated_data).decode ('utf-8').strip ()))
+            # Try to write to database the generated_data stored under resource_name
+            document = dict ()
+            document["_id"] = resource_name
+            document["randomdata"] = bson_data
+            collection.insert_one (document)
         except Exception as ex:
             if len (ex.args) == 2:
                 status, message = ex.args
@@ -252,7 +273,9 @@ If GET of the resource results in 404 Not Found, someone got it before you.
                 status = 400
                 message = str (ex)
             self.set_status (status)
+            self.set_header ("Content-type", "application/json")
             self.write (message)
+            self.write ("\n")
 
 class NotFoundHandler (tornado.web.RequestHandler):
     '''Not found for all http verbs.'''
@@ -280,7 +303,7 @@ import sys
 if __name__ == "__main__" and site_prefix != '':
     patterns = [(site_prefix + item[0],) + item[1:] for item in patterns]
 
-# Everything outside of the site prefix is not found
+# After prepending prefix, everything outside of the site prefix is not found
 patterns.append ((r"/.*", NotFoundHandler))
 
 for item in patterns:
@@ -289,8 +312,45 @@ for item in patterns:
 application = tornado.web.Application (patterns)
 
 if __name__ == "__main__":
+    # Setup options to read from site.ini
+    tornado.options.define ("db_host", type=str, default="localhost")
+    tornado.options.define ("db_port", type=int, default=27017)
+    tornado.options.define ("db_name", type=str)
+    tornado.options.define ("db_user", type=str)
+    tornado.options.define ("db_password", type=str)
+    tornado.options.parse_config_file ("site.ini")
+    config = tornado.options.options
+
+    try:
+        client = pymongo.MongoClient (host=config.db_host, port=config.db_port)
+        client.admin.command ('ping')
+        info = client.server_info ()
+        print ("Database server version {}".format (info['version']))
+        # Get database and names of collections
+        database = client[config.db_name]
+        # Try authenticating against the database
+        if (config.db_user is not None and config.db_user != ""):
+            print ("Authenticating as user {}".format (config.db_user))
+            database.authenticate (config.db_user, config.db_password)
+            print ("    authenticated to database '{}' as user '{}'".format (config.db_name, config.db_user))
+        else:
+            print ("Not using database authentication")
+        # Show collections
+        names = database.collection_names ()
+        print ("Database '{}' has {} collections".format (config.db_name, len (names)))
+        # Obtain a pymongo.collection.Collection (or simply database.randomdata)
+        collection = database.get_collection ("randomdata")
+        print ("Collection 'randomdata' count: {}".format (collection.count ()))
+    except pymongo.errors.InvalidName as ex:
+        raise SystemExit ("Invalid database name: {}".format (str (ex)))
+    except Exception as ex:
+        raise SystemExit ("Problem connecting to database: {}".format (str (ex)))
+
     print ("Application begin, listening on localhost port {}".format (port))
     # Listen locally, proxy handles GET requests for existing files
     application.listen (port, 'localhost')
     tornado.ioloop.IOLoop.current ().start ()
+
+    print ("Closing database connection")
+    client.close ()
     print ("Application end")
