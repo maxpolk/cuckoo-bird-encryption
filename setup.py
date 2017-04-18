@@ -49,8 +49,8 @@ setup (
     package_data = {
         # If any package contains *.txt, *.rst, or *.md files, include them:
         '': ['*.txt', '*.rst', '*.md'],
-        # And include any *.msg files found in the 'hello' package, too:
-        'hello': ['*.msg'],
+        # Include site.ini in teh cuckoobird package
+        'cuckoobird': ['site.ini'],
     },
     # metadata for upload to PyPI
     author = "Max Polk",
