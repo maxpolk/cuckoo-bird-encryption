@@ -1,10 +1,12 @@
 import os
+import sys
 import getpass
 import re
 import json
 import cgi                      # for parse_header
 import random
 import binascii
+import datetime
 import bson.binary
 import tornado.ioloop
 import tornado.web
@@ -115,7 +117,6 @@ signal.signal (signal.SIGINT, signal_handler)
 signal.signal (signal.SIGTERM, signal_handler)
 
 # Prefix where site runs, can be blank
-import sys
 site_prefix = ""
 port = 8080                       # default to port 8080 if not provided on cmd line
 if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] != '':
@@ -244,7 +245,6 @@ If GET of the resource results in 404 Not Found, someone got it before you.
             user_length = user_json['length']
             if not type (user_length) is int:
                 raise Exception (400, '{"error": "Request body must be a JSON object containing length parameter with int value"}')
-            print ("Type of length is {}".format (type (user_length)))
             if user_length < 1 or user_length > 1024:
                 raise Exception (400, '{"error": "You may request 1 to 1024 octets of random data"}')
 
@@ -263,8 +263,10 @@ If GET of the resource results in 404 Not Found, someone got it before you.
                 resource_name, binascii.b2a_base64 (generated_data).decode ('utf-8').strip ()))
             # Try to write to database the generated_data stored under resource_name
             document = dict ()
-            document["_id"] = resource_name
-            document["randomdata"] = bson_data
+            document["_id"] = resource_name     # Resource name is object ID
+            document["lookups"] = 0             # How many times we looked up resource
+            document["create_date"] = datetime.datetime.now (datetime.timezone.utc)
+            document["randomdata"] = bson_data  # Resource data
             collection.insert_one (document)
         except Exception as ex:
             if len (ex.args) == 2:
@@ -299,7 +301,6 @@ patterns = [
 # If this runs with a certain prefix, pass as cmd arg and we'll prepend it to
 # all url patterns (eg, /u becomes /${site_prefix}/u).
 #
-import sys
 if __name__ == "__main__" and site_prefix != '':
     patterns = [(site_prefix + item[0],) + item[1:] for item in patterns]
 
@@ -311,6 +312,9 @@ for item in patterns:
 
 application = tornado.web.Application (patterns)
 
+def maintenance ():
+    print ("Performing maintenance")
+    
 if __name__ == "__main__":
     # Setup options to read from site.ini
     tornado.options.define ("db_host", type=str, default="localhost")
@@ -347,10 +351,18 @@ if __name__ == "__main__":
         raise SystemExit ("Problem connecting to database: {}".format (str (ex)))
 
     print ("Application begin, listening on localhost port {}".format (port))
+
+    # Start periodic maintenance task in the background
+    maint = tornado.ioloop.PeriodicCallback (maintenance, 5 * 1000)
+    print ("Starting maintenance task")
+    maint.start ()
+
     # Listen locally, proxy handles GET requests for existing files
     application.listen (port, 'localhost')
     tornado.ioloop.IOLoop.current ().start ()
 
+    print ("Stopping maintenance task")
+    maint.stop ()
     print ("Closing database connection")
     client.close ()
     print ("Application end")
