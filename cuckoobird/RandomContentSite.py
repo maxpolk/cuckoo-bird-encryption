@@ -16,23 +16,24 @@ from tornado.web import addslash
 import pymongo
 
 #----------------------------------------------------------------------
-# Configuration file:
-#     Create a simple name=value style configuration file that gets loaded, to provide
-#     the database host, port, database name, username, and password, such as:
-#         db_host = "localhost"
-#         db_port = 27017
-#         db_name = "rand"
-#         db_user = "myuser"
-#         db_password = "SECRET"
-#     Omit db_user to connect unauthenticated (probably a very bad idea).
+# Configuration file
+#
+# Create a simple name=value style configuration file that gets loaded, to provide
+# the database host, port, database name, username, and password, such as:
+#     db_host = "localhost"
+#     db_port = 27017
+#     db_name = "rand"
+#     db_user = "myuser"
+#     db_password = "SECRET"
+# Omit db_user to connect unauthenticated (probably a very bad idea).
 #
 #----------------------------------------------------------------------
-# Testing using curl.
+# Testing using curl
 #
 # Post to obtain 10 octets of random data:
 #     $ curl -i -X POST 'http://localhost:8080/random/' -H 'Content-Type: application/json' --data-binary '{"length": 10}'
 #
-# Get of random data created:
+# Get of random data created, using resource name returned from post:
 #     $ curl -i 'http://localhost:8080/random/A274CB0A2816135DD4FD92FEFA1009F'
 #----------------------------------------------------------------------
 
@@ -105,15 +106,25 @@ class MainDataHandler (tornado.web.RequestHandler):
     def get(self):
         # Find the resource (strip leading slash)
         resource = self.request.uri[1:]
+        # Obtain document
         document = collection.find_one ({"_id": resource})
-        if (not document):
+        if not document:
             self.set_status (404)
         else:
-            self.set_status (200)
-            self.set_header ("Content-type", "application/json")
-            valueBytes = document["randomdata"]
-            # Write binary as base64
-            self.write ("{{\"data-base64\": \"{}\"}}\n".format (binascii.b2a_base64 (valueBytes).decode ('utf-8').strip ()))
+            # Update access count on document
+            result = collection.update_one ({"_id": resource}, {"$inc": {"access_count": 1}})
+            if result.modified_count == 0:
+                # Log and ignore error
+                print ("Internal error, unable to update access_count on resource {}".format (resource))
+            # Ensure resource lookup count limited to one access
+            if document["access_count"] > 0:
+                self.set_status (404)
+            else:
+                self.set_status (200)
+                self.set_header ("Content-type", "application/json")
+                valueBytes = document["randomdata"]
+                # Write binary as base64
+                self.write ("{{\"data-base64\": \"{}\"}}\n".format (binascii.b2a_base64 (valueBytes).decode ('utf-8').strip ()))
 
 class PostDataHandler (tornado.web.RequestHandler):
     '''
@@ -209,7 +220,7 @@ If GET of the resource results in 404 Not Found, someone got it before you.
             # Try to write to database the generated_data stored under resource_name
             document = dict ()
             document["_id"] = resource_name     # Resource name is object ID
-            document["lookups"] = 0             # How many times we looked up resource
+            document["access_count"] = 0        # Count of times resource looked up
             document["create_date"] = datetime.datetime.utcnow ()
             document["randomdata"] = bson_data  # Resource data
             collection.insert_one (document)
@@ -258,12 +269,15 @@ for item in patterns:
 application = tornado.web.Application (patterns)
 
 def maintenance ():
-    # Find rows older than 5 minutes and remove them
+    # Remove rows older than 5 minutes
     five_min_ago = datetime.datetime.utcnow () - datetime.timedelta (minutes=5)
-    doc = collection.remove ({"create_date": {"$lt": five_min_ago}})
-    removedCount = doc["n"]
-    if (removedCount > 0):
-        print ("Removed {} old documents".format (removedCount))
+    result = collection.delete_many ({"create_date": {"$lt": five_min_ago}})
+    if (result.deleted_count > 0):
+        print ("Removed {} old documents".format (result.deleted_count))
+    # Remove documents accessed once or more times
+    result = collection.delete_many ({"access_count": {"$gt": 0}})
+    if (result.deleted_count > 0):
+        print ("Removed {} completed access documents".format (result.deleted_count))
     
 if __name__ == "__main__":
     # Setup options to read from site.ini
@@ -310,8 +324,9 @@ if __name__ == "__main__":
     print ("Application begin, listening on localhost port {}".format (port))
 
     # Start periodic maintenance task in the background
-    maint = tornado.ioloop.PeriodicCallback (maintenance, 5 * 1000)
-    print ("Starting maintenance task")
+    maint_seconds = 5
+    maint = tornado.ioloop.PeriodicCallback (maintenance, maint_seconds * 1000)
+    print ("Scheduling maintenance task every {} seconds".format (maint_seconds))
     maint.start ()
 
     # Listen locally, proxy handles GET requests for existing files
