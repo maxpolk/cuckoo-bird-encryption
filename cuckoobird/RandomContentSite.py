@@ -103,14 +103,17 @@ class MainDataHandler (tornado.web.RequestHandler):
         '''Called after response sent to client.'''
         pass
     def get(self):
-        self.set_status (200)
-        self.set_header ("Content-type", "application/json")
         # Find the resource (strip leading slash)
         resource = self.request.uri[1:]
         document = collection.find_one ({"_id": resource})
-        valueBytes = document["randomdata"]
-        # Write binary as base64
-        self.write ("{{\"data-base64\": \"{}\"}}\n".format (binascii.b2a_base64 (valueBytes).decode ('utf-8').strip ()))
+        if (not document):
+            self.set_status (404)
+        else:
+            self.set_status (200)
+            self.set_header ("Content-type", "application/json")
+            valueBytes = document["randomdata"]
+            # Write binary as base64
+            self.write ("{{\"data-base64\": \"{}\"}}\n".format (binascii.b2a_base64 (valueBytes).decode ('utf-8').strip ()))
 
 class PostDataHandler (tornado.web.RequestHandler):
     '''
