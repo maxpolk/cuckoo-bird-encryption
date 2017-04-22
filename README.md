@@ -28,3 +28,75 @@ If both sender and recipient elect to discard the original message, then it is i
 ## Projects
 The randomcontentsite package contains a web site that generates random data and
 stores it as a temporary URL.
+
+## Installing
+To install a Python script to run as a system service, you have several options.  Let us
+take RandomContentSite.py as an example service.
+
+### Ubuntu under systemd
+To install on Ubuntu under systemd, create a service file:
+
+File location:
+    /etc/systemd/system/python3-randomdata.service
+
+File contents:
+    [Unit]
+    Description=Python3 randomdata site
+    After=network.target
+    
+    [Service]
+    Type=simple
+    WorkingDirectory=/var/www/python/cuckoo-bird-encryption
+    Environment="PYTHONPATH=/var/www/python/cuckoo-bird-encryption"
+    ExecStart=/usr/bin/python3 -u cuckoobird/RandomContentSite.py random 8010
+    StandardOutput=journal
+    StandardError=journal
+    
+    [Install]
+    WantedBy=multi-user.target
+
+Enable:
+    systemctl daemon-reload
+    systemctl enable python3-randomdata
+
+Start and stop:
+    systemctl start test-server
+    systemctl stop test-server
+
+View log (we ran python3 -u for unbuffered output so it shows immediately in log):
+    journalctl [-f] -u python3-random
+
+### Cygwin Windows service under cygrunsrv
+To install as a Cygwin Windows service, use cygrunsrv as follows.
+Perform the following as administrator.
+
+Install (no userspace drives mapped, use something like /cygdrive/c to find script):
+    cygrunsrv --install testserver
+              --path /usr/bin/python3
+              --args "/cygdrive/c/WHATEVER/RandomContentSite.py"
+              --termsig INT                 # service stop signal (graceful shutdown)
+              --shutsig TERM                # system shutdown signal (fast shutdown)
+              --shutdown                    # stop service at system shutdown
+
+Start:
+    cygrunsrv -S testserver
+
+Stop:
+    cygrunsrv -E testserver
+
+Uninstall:
+    cygrunsrv -R testserver
+
+### Native Python service under nssm
+To install as a native Python Windows service, use nssm as follows.
+
+Download nssm at http://nssm.cc/ and unzip, you'll use the correct nssm.exe
+program for your OS (32-bit or 64-bit).
+
+Path:              C:\Apps\Python3\python.exe
+Startup directory: C:\WHATEVER
+Arguments:         RandomContentSite.py
+
+### Run directly
+To run directly, such as during local development:
+    python3 RandomContentSite.py random 8010
