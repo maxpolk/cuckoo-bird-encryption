@@ -16,66 +16,6 @@ from tornado.web import addslash
 import pymongo
 
 #----------------------------------------------------------------------
-# To install on Ubuntu under systemd, create a service file:
-# File location:
-#     /etc/systemd/system/python3-randomdata.service
-# File contents:
-#     [Unit]
-#     Description=Python3 randomdata site
-#     After=network.target
-#     
-#     [Service]
-#     Type=simple
-#     WorkingDirectory=/var/www/python/cuckoo-bird-encryption
-#     Environment="PYTHONPATH=/var/www/python/cuckoo-bird-encryption"
-#     ExecStart=/usr/bin/python3 -u cuckoobird/RandomContentSite.py random 8010
-#     StandardOutput=journal
-#     StandardError=journal
-#     
-#     [Install]
-#     WantedBy=multi-user.target
-# Enable:
-#     systemctl daemon-reload
-#     systemctl enable python3-randomdata
-# Start and stop:
-#     systemctl start test-server
-#     systemctl stop test-server
-# View log (we ran python3 -u for unbuffered output so it shows immediately in log):
-#     journalctl -u python3-random
-#
-#----------------------------------------------------------------------
-# To install as a Cygwin Windows service, use cygrunsrv as follows.
-# Perform the following as administrator.
-#
-# Install (no userspace drives mapped, use something like /cygdrive/c to find script):
-#     cygrunsrv --install testserver
-#               --path /usr/bin/python3
-#               --args "/cygdrive/c/WHATEVER/RandomContentSite.py"
-#               --termsig INT                 # service stop signal (graceful shutdown)
-#               --shutsig TERM                # system shutdown signal (fast shutdown)
-#               --shutdown                    # stop service at system shutdown
-# Start:
-#     cygrunsrv -S testserver
-# Stop:
-#     cygrunsrv -E testserver
-# Uninstall:
-#     cygrunsrv -R testserver
-#
-#----------------------------------------------------------------------
-# To install as a native Python Windows service, use nssm as follows.
-#
-# Download nssm at http://nssm.cc/ and unzip, you'll use the correct nssm.exe
-# program for your OS (32-bit or 64-bit).
-#
-# Path:              C:\Apps\Python3\python.exe
-# Startup directory: C:\WHATEVER
-# Arguments:         RandomContentSite.py
-# 
-#----------------------------------------------------------------------
-# To run directly:
-#     python3 RandomContentSite.py random 8010
-#
-#----------------------------------------------------------------------
 # Configuration file:
 #     Create a simple name=value style configuration file that gets loaded, to provide
 #     the database host, port, database name, username, and password, such as:
@@ -94,7 +34,9 @@ import pymongo
 #
 # Get of random data created:
 #     $ curl -i 'http://localhost:8080/random/A274CB0A2816135DD4FD92FEFA1009F'
-#
+#----------------------------------------------------------------------
+
+print ("Application begin")
 
 # Globals
 client = None
@@ -326,7 +268,14 @@ if __name__ == "__main__":
     config = tornado.options.options
 
     try:
-        client = pymongo.MongoClient (host=config.db_host, port=config.db_port)
+        print ("Connecting to database host {} port {}".format (
+            config.db_host, config.db_port))
+        client = pymongo.MongoClient (
+            host=config.db_host, port=config.db_port,
+            maxIdleTimeMS=60000,       # max time connection is idle before removal
+            connectTimeoutMS=10000,    # initial connection timeout
+            socketTimeoutMS=60000      # response timeout
+        )
         client.admin.command ('ping')
         info = client.server_info ()
         print ("Database server version {}".format (info['version']))
