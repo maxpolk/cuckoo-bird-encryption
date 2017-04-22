@@ -13,7 +13,7 @@ __software_date__ = "1704"
 
 # Type of release, use "a" for alpha, "b" for beta, "c" for release candidate,
 # and "" (the empty string) or "final" for final release version.
-__software_type__ = "a"
+__software_type__ = "b"
 
 # Name of this software
 software_name = "Cuckoo Bird Encryption"
