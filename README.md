@@ -37,9 +37,11 @@ take RandomContentSite.py as an example service.
 To install on Ubuntu under systemd, create a service file:
 
 File location:
+
     /etc/systemd/system/python3-randomdata.service
 
 File contents:
+
     [Unit]
     Description=Python3 randomdata site
     After=network.target
@@ -56,14 +58,17 @@ File contents:
     WantedBy=multi-user.target
 
 Enable:
+
     systemctl daemon-reload
     systemctl enable python3-randomdata
 
 Start and stop:
+
     systemctl start test-server
     systemctl stop test-server
 
 View log (we ran python3 -u for unbuffered output so it shows immediately in log):
+
     journalctl [-f] -u python3-random
 
 ### Cygwin Windows service under cygrunsrv
@@ -71,6 +76,7 @@ To install as a Cygwin Windows service, use cygrunsrv as follows.
 Perform the following as administrator.
 
 Install (no userspace drives mapped, use something like /cygdrive/c to find script):
+
     cygrunsrv --install testserver
               --path /usr/bin/python3
               --args "/cygdrive/c/WHATEVER/RandomContentSite.py"
@@ -79,12 +85,15 @@ Install (no userspace drives mapped, use something like /cygdrive/c to find scri
               --shutdown                    # stop service at system shutdown
 
 Start:
+
     cygrunsrv -S testserver
 
 Stop:
+
     cygrunsrv -E testserver
 
 Uninstall:
+
     cygrunsrv -R testserver
 
 ### Native Python service under nssm
@@ -93,10 +102,11 @@ To install as a native Python Windows service, use nssm as follows.
 Download nssm at http://nssm.cc/ and unzip, you'll use the correct nssm.exe
 program for your OS (32-bit or 64-bit).
 
-Path:              C:\Apps\Python3\python.exe
-Startup directory: C:\WHATEVER
-Arguments:         RandomContentSite.py
+    Path:              C:\Apps\Python3\python.exe
+    Startup directory: C:\WHATEVER
+    Arguments:         RandomContentSite.py
 
 ### Run directly
 To run directly, such as during local development:
+
     python3 RandomContentSite.py random 8010
