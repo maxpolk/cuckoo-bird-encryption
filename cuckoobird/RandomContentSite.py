@@ -207,7 +207,7 @@ If GET of the resource results in 404 Not Found, someone got it before you.
             document = dict ()
             document["_id"] = resource_name     # Resource name is object ID
             document["lookups"] = 0             # How many times we looked up resource
-            document["create_date"] = datetime.datetime.now (datetime.timezone.utc)
+            document["create_date"] = datetime.datetime.utcnow ()
             document["randomdata"] = bson_data  # Resource data
             collection.insert_one (document)
         except Exception as ex:
@@ -255,7 +255,12 @@ for item in patterns:
 application = tornado.web.Application (patterns)
 
 def maintenance ():
-    print ("Performing maintenance")
+    # Find rows older than 5 minutes and remove them
+    five_min_ago = datetime.datetime.utcnow () - datetime.timedelta (minutes=5)
+    doc = collection.remove ({"create_date": {"$lt": five_min_ago}})
+    removedCount = doc["n"]
+    if (removedCount > 0):
+        print ("Removed {} old documents".format (removedCount))
     
 if __name__ == "__main__":
     # Setup options to read from site.ini
