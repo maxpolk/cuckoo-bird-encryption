@@ -43,6 +43,20 @@ print ("Application begin")
 client = None
 database = None
 collection = None
+not_found_text = '''<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8"/>
+        <title>Not found</title>
+    </head>
+    <body>
+        <h1>HTTP error 404</h1>
+        <h2>Not Found</h2>
+        <p>The server has not found anything matching the Request-URI.</p>
+        <p><!-- Filler so IE won't render 'too small' of a page -->&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</p>
+    </body>
+</html>
+'''
 
 import signal
 def shutdown_callback ():
@@ -107,24 +121,20 @@ class MainDataHandler (tornado.web.RequestHandler):
         # Find the resource (strip leading slash)
         resource = self.request.uri[1:]
         # Obtain document
-        document = collection.find_one ({"_id": resource})
-        if not document:
+        document = collection.find_one_and_update (
+            {'_id': resource},
+            {'$inc': {'access_count': 1}},
+            return_document=pymongo.ReturnDocument.AFTER)
+        # Ensure resource lookup count limited to one access
+        if not document or document["access_count"] > 1:
             self.set_status (404)
+            self.write (not_found_text)
         else:
-            # Update access count on document
-            result = collection.update_one ({"_id": resource}, {"$inc": {"access_count": 1}})
-            if result.modified_count == 0:
-                # Log and ignore error
-                print ("Internal error, unable to update access_count on resource {}".format (resource))
-            # Ensure resource lookup count limited to one access
-            if document["access_count"] > 0:
-                self.set_status (404)
-            else:
-                self.set_status (200)
-                self.set_header ("Content-type", "application/json")
-                valueBytes = document["randomdata"]
-                # Write binary as base64
-                self.write ("{{\"data-base64\": \"{}\"}}\n".format (binascii.b2a_base64 (valueBytes).decode ('utf-8').strip ()))
+            self.set_status (200)
+            self.set_header ("Content-type", "application/json")
+            valueBytes = document["randomdata"]
+            # Write binary as base64
+            self.write ("{{\"data-base64\": \"{}\"}}\n".format (binascii.b2a_base64 (valueBytes).decode ('utf-8').strip ()))
 
 class PostDataHandler (tornado.web.RequestHandler):
     '''
@@ -239,7 +249,10 @@ class NotFoundHandler (tornado.web.RequestHandler):
     '''Not found for all http verbs.'''
     def prepare (self):
         '''Common initialization regardless of the request method.'''
-        self.send_error (404)
+        self.set_status (404)
+        self.write (not_found_text)
+    def get(self):
+        pass
 
 class RedirectToRootHandler (tornado.web.RequestHandler):
     '''Redirect to root resource.'''
